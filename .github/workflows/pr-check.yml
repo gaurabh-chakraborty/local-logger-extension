@@ -1,0 +1,171 @@
+name: 🔍 PR Quality Check
+
+on:
+  pull_request:
+    branches: [ main, master ]
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  validate-pr:
+    name: 🔍 Validate Pull Request
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Lint code
+        run: npm run lint
+
+      - name: 🧪 Run tests
+        run: npm test
+
+      - name: 🏗️ Build extension
+        run: npm run compile
+
+      - name: 📦 Package extension
+        run: npm run package
+
+      - name: ✅ Validate package.json
+        run: |
+          # Check required fields
+          node -e "
+            const pkg = require('./package.json');
+            const required = ['name', 'displayName', 'description', 'version', 'publisher', 'engines'];
+            for (const field of required) {
+              if (!pkg[field]) {
+                console.error(\`❌ Missing required field: \${field}\`);
+                process.exit(1);
+              }
+            }
+            console.log('✅ Package.json validation passed');
+          "
+
+      - name: 📏 Check extension size
+        run: |
+          SIZE=$(stat -f%z *.vsix 2>/dev/null || stat -c%s *.vsix)
+          MAX_SIZE=$((10 * 1024 * 1024))  # 10MB
+          
+          if [ $SIZE -gt $MAX_SIZE ]; then
+            echo "❌ Extension too large: $(($SIZE / 1024 / 1024))MB (max 10MB)"
+            exit 1
+          else
+            echo "✅ Extension size OK: $(($SIZE / 1024))KB"
+          fi
+
+      - name: 🔒 Security audit
+        run: npm audit --audit-level moderate
+
+      - name: 📝 Check documentation
+        run: |
+          # Check if README was updated for significant changes
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "src/\|package.json"; then
+            if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q "README.md\|CHANGELOG.md"; then
+              echo "⚠️ Source changes detected but no documentation updates"
+              echo "Consider updating README.md or CHANGELOG.md"
+            else
+              echo "✅ Documentation appears to be updated"
+            fi
+          fi
+
+      - name: 💬 PR Comment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Get extension size
+            const stats = fs.statSync(fs.readdirSync('.').find(f => f.endsWith('.vsix')));
+            const sizeKB = Math.round(stats.size / 1024);
+            
+            const comment = `
+            ## 🔍 PR Quality Check Results
+            
+            ✅ **All checks passed!**
+            
+            ### 📊 Build Stats
+            - **Extension Size:** ${sizeKB}KB
+            - **Node.js Version:** ${{ env.NODE_VERSION }}
+            - **Build Status:** ✅ Success
+            
+            ### 🧪 Test Results
+            - **Linting:** ✅ Passed
+            - **Tests:** ✅ Passed  
+            - **Compilation:** ✅ Passed
+            - **Packaging:** ✅ Passed
+            
+            ### 🔒 Security
+            - **Dependency Audit:** ✅ No high/critical vulnerabilities
+            - **Package Validation:** ✅ All required fields present
+            
+            **Ready for merge!** 🚀
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  # Auto-assign reviewers for certain file changes
+  assign-reviewers:
+    name: 🎯 Auto-assign Reviewers
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🎯 Assign reviewers based on changes
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number } = context.issue;
+            
+            // Get changed files
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner,
+              repo,
+              pull_number: number
+            });
+            
+            const changedFiles = files.map(f => f.filename);
+            let reviewers = [];
+            
+            // Add logic for different types of changes
+            if (changedFiles.some(f => f.includes('package.json') || f.includes('workflow'))) {
+              reviewers.push('GaurabhChakraborty'); // Replace with actual reviewers
+            }
+            
+            if (changedFiles.some(f => f.includes('.md'))) {
+              // Documentation changes - could assign tech writer
+              console.log('Documentation changes detected');
+            }
+            
+            if (reviewers.length > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: number,
+                reviewers: reviewers
+              });
+            }

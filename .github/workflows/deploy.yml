@@ -1,0 +1,319 @@
+name: 🚀 Deploy to VS Code Marketplace
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Quality checks and tests
+  quality-checks:
+    name: 🔍 Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Lint code
+        run: npm run lint
+
+      - name: 🧪 Run tests
+        if: ${{ !inputs.skip_tests }}
+        run: npm test
+
+      - name: 🏗️ Build extension
+        run: npm run compile
+
+      - name: 📊 Check bundle size
+        run: |
+          npm run package
+          ls -lh *.vsix
+          echo "Bundle size:" >> $GITHUB_STEP_SUMMARY
+          ls -lh *.vsix >> $GITHUB_STEP_SUMMARY
+
+  # Documentation checks
+  documentation-checks:
+    name: 📚 Documentation Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ✅ Check required files exist
+        run: |
+          files=("README.md" "CHANGELOG.md" "LICENSE.md" "CONTRIBUTING.md" "package.json")
+          for file in "${files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing required file: $file"
+              exit 1
+            else
+              echo "✅ Found: $file"
+            fi
+          done
+
+      - name: 📏 Check README.md length
+        run: |
+          readme_lines=$(wc -l < README.md)
+          if [ $readme_lines -lt 50 ]; then
+            echo "❌ README.md too short ($readme_lines lines). Minimum 50 lines required."
+            exit 1
+          else
+            echo "✅ README.md length OK ($readme_lines lines)"
+          fi
+
+      - name: 🔗 Check for broken links (basic)
+        run: |
+          if grep -q "FIXME\|TODO\|placeholder" README.md; then
+            echo "❌ Found placeholder content in README.md"
+            exit 1
+          else
+            echo "✅ No placeholder content found"
+          fi
+
+  # Security and vulnerability checks
+  security-checks:
+    name: 🛡️ Security Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔒 Audit dependencies
+        run: npm audit --audit-level moderate
+
+      - name: 🔍 Check for secrets
+        run: |
+          if grep -r -i "password\|secret\|token\|key" src/ --exclude-dir=node_modules; then
+            echo "⚠️ Potential secrets found in source code"
+            echo "Please review the above findings"
+          else
+            echo "✅ No obvious secrets found"
+          fi
+
+  # Version bump and deployment
+  deploy:
+    name: 🚀 Deploy to Marketplace
+    runs-on: ubuntu-latest
+    needs: [quality-checks, documentation-checks, security-checks]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📥 Install dependencies
+        run: npm ci
+
+      - name: 🔧 Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: 📈 Bump version
+        id: version_bump
+        run: |
+          # Determine version bump type
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            BUMP_TYPE="${{ inputs.version_bump }}"
+          else
+            # Auto-determine based on commit messages
+            if git log --format=%B -n 1 | grep -q "BREAKING CHANGE\|major:"; then
+              BUMP_TYPE="major"
+            elif git log --format=%B -n 1 | grep -q "feat:\|feature:"; then
+              BUMP_TYPE="minor"
+            else
+              BUMP_TYPE="patch"
+            fi
+          fi
+          
+          echo "Bumping version: $BUMP_TYPE"
+          
+          # Bump version in package.json
+          npm version $BUMP_TYPE --no-git-tag-version
+          
+          # Get new version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          
+          echo "New version: $NEW_VERSION"
+
+      - name: 📝 Update CHANGELOG.md
+        run: |
+          NEW_VERSION="${{ steps.version_bump.outputs.new_version }}"
+          TODAY=$(date +%Y-%m-%d)
+          
+          # Create changelog entry
+          TEMP_FILE=$(mktemp)
+          echo "# Changelog" > $TEMP_FILE
+          echo "" >> $TEMP_FILE
+          echo "## [$NEW_VERSION] - $TODAY" >> $TEMP_FILE
+          echo "" >> $TEMP_FILE
+          echo "### Added" >> $TEMP_FILE
+          echo "- Automated deployment via GitHub Actions" >> $TEMP_FILE
+          echo "" >> $TEMP_FILE
+          
+          # Add existing changelog content (skip first line if it's "# Changelog")
+          if [ -f "CHANGELOG.md" ]; then
+            tail -n +2 CHANGELOG.md >> $TEMP_FILE
+          fi
+          
+          mv $TEMP_FILE CHANGELOG.md
+
+      - name: 🏗️ Build extension
+        run: |
+          npm run compile
+          npm run package
+
+      - name: 📤 Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version_bump.outputs.new_version }}
+          release_name: Release v${{ steps.version_bump.outputs.new_version }}
+          body: |
+            ## 🚀 Release v${{ steps.version_bump.outputs.new_version }}
+            
+            **Version Bump:** ${{ steps.version_bump.outputs.bump_type }}
+            
+            ### 📥 Installation
+            ```bash
+            # Install from marketplace
+            code --install-extension GaurabhChakraborty.ai-usage-tracker
+            
+            # Or download .vsix file from assets below
+            ```
+            
+            ### 📋 What's Changed
+            - Automated deployment improvements
+            - Quality and security checks
+            - Enhanced documentation
+            
+            See [CHANGELOG.md](CHANGELOG.md) for full details.
+            
+            ### 🛠️ For Developers
+            - Node.js ${{ env.NODE_VERSION }}
+            - VS Code 1.74.0+
+            - TypeScript compilation verified
+            
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.version_bump.outputs.previous_version }}...v${{ steps.version_bump.outputs.new_version }}
+          draft: false
+          prerelease: false
+
+      - name: 📎 Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./ai-usage-tracker-${{ steps.version_bump.outputs.new_version }}.vsix
+          asset_name: ai-usage-tracker-${{ steps.version_bump.outputs.new_version }}.vsix
+          asset_content_type: application/zip
+
+      - name: 🚀 Publish to VS Code Marketplace
+        if: success()
+        run: |
+          # Install vsce if not already installed
+          npm install -g @vscode/vsce
+          
+          # Publish to marketplace
+          vsce publish --pat ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: 💾 Commit version bump
+        run: |
+          git add package.json CHANGELOG.md
+          git commit -m "🔖 Bump version to ${{ steps.version_bump.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: 📊 Deployment Summary
+        run: |
+          echo "## 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ steps.version_bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bump Type:** ${{ steps.version_bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Marketplace:** Published ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- **GitHub Release:** Created ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=GaurabhChakraborty.ai-usage-tracker)" >> $GITHUB_STEP_SUMMARY
+          echo "- [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version_bump.outputs.new_version }})" >> $GITHUB_STEP_SUMMARY
+
+  # Notification job
+  notify:
+    name: 📢 Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    
+    steps:
+      - name: 📢 Success Notification
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "✅ Extension successfully deployed to VS Code Marketplace!"
+          echo "🎉 Ready for team installation and usage"
+
+      - name: ❌ Failure Notification  
+        if: needs.deploy.result == 'failure'
+        run: |
+          echo "❌ Deployment failed. Please check the logs above."
+          echo "🔧 Common issues:"
+          echo "  - VSCE_PAT secret not configured"
+          echo "  - Package.json validation errors"
+          echo "  - Marketplace publisher authentication"
+          exit 1

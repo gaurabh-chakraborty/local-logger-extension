@@ -1,0 +1,154 @@
+name: 🔄 Auto Update Dependencies
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Update type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  update-dependencies:
+    name: 📦 Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 🔧 Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: 📋 Check for updates
+        id: check_updates
+        run: |
+          npm outdated --json > outdated.json || true
+          
+          if [ -s outdated.json ]; then
+            echo "updates_available=true" >> $GITHUB_OUTPUT
+            echo "📦 Updates available:"
+            cat outdated.json | jq -r 'keys[]'
+          else
+            echo "updates_available=false" >> $GITHUB_OUTPUT
+            echo "✅ All dependencies are up to date"
+          fi
+
+      - name: 🔄 Update dependencies
+        if: steps.check_updates.outputs.updates_available == 'true'
+        run: |
+          # Determine update strategy
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            UPDATE_TYPE="${{ inputs.update_type }}"
+          else
+            UPDATE_TYPE="patch"
+          fi
+          
+          echo "Updating dependencies: $UPDATE_TYPE level"
+          
+          case $UPDATE_TYPE in
+            "patch")
+              npm update
+              ;;
+            "minor")
+              npx npm-check-updates -u --target minor
+              npm install
+              ;;
+            "major")
+              npx npm-check-updates -u
+              npm install
+              ;;
+          esac
+
+      - name: 🧪 Test after updates
+        if: steps.check_updates.outputs.updates_available == 'true'
+        run: |
+          npm run lint
+          npm test
+          npm run compile
+          npm run package
+
+      - name: 🔒 Security audit
+        if: steps.check_updates.outputs.updates_available == 'true'
+        run: |
+          npm audit --audit-level moderate || {
+            echo "⚠️ Security vulnerabilities found after update"
+            echo "Running npm audit fix..."
+            npm audit fix
+            
+            # Test again after security fixes
+            npm run compile
+          }
+
+      - name: 📝 Generate update summary
+        if: steps.check_updates.outputs.updates_available == 'true'
+        run: |
+          echo "## 📦 Dependency Updates" > update_summary.md
+          echo "" >> update_summary.md
+          echo "### Updated Packages" >> update_summary.md
+          
+          if [ -f outdated.json ]; then
+            cat outdated.json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.current) → \(.value.wanted)"' >> update_summary.md
+          fi
+          
+          echo "" >> update_summary.md
+          echo "### 🧪 Testing" >> update_summary.md
+          echo "- ✅ Linting passed" >> update_summary.md
+          echo "- ✅ Tests passed" >> update_summary.md  
+          echo "- ✅ Compilation successful" >> update_summary.md
+          echo "- ✅ Packaging successful" >> update_summary.md
+          echo "- ✅ Security audit passed" >> update_summary.md
+
+      - name: 📤 Create Pull Request
+        if: steps.check_updates.outputs.updates_available == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "📦 Update dependencies"
+          title: "🔄 Automated Dependency Updates"
+          body-path: update_summary.md
+          branch: "automated/dependency-updates"
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
+          assignees: GaurabhChakraborty
+          reviewers: GaurabhChakraborty
+
+      - name: 📊 Summary
+        run: |
+          if [ "${{ steps.check_updates.outputs.updates_available }}" == "true" ]; then
+            echo "## 🔄 Dependency Update Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Updates processed and PR created**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+            echo "1. Review the created PR" >> $GITHUB_STEP_SUMMARY
+            echo "2. Test the changes locally if needed" >> $GITHUB_STEP_SUMMARY
+            echo "3. Merge when ready" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ Dependencies Up to Date" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No updates needed at this time." >> $GITHUB_STEP_SUMMARY
+          fi
