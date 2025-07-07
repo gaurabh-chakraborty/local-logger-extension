@@ -5,6 +5,26 @@ All notable changes to the "AI Usage Tracker" extension will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-07-07
+
+### 🚀 Enhanced Marketplace Release
+
+#### Fixed
+- **Package Name**: Updated package name from "ai-usage-tracker" to "local-logger" to match marketplace extension
+- **Marketplace Links**: Fixed all badge URLs and links to use correct extension identifier
+
+#### Enhanced
+- **Marketplace Presentation**: Improved extension description and overview
+- **Professional Screenshots**: Added placeholder images for marketplace gallery
+- **Enhanced Documentation**: Better README with use cases and features
+- **VS Code Marketplace Badges**: Added download and rating badges
+- **User Experience**: Clearer quick start guide and command descriptions
+
+#### Added
+- **Use Case Examples**: Enterprise teams, development teams, project managers, researchers
+- **Visual Gallery**: Command palette, dashboard, session tracking, and CSV export previews
+- **Professional Branding**: Enhanced marketplace presence with comprehensive overview
+
 ## [1.0.0] - 2025-07-07
 
 ### 🎉 Initial Release - AI Usage Tracking

@@ -1,8 +1,8 @@
 {
-  "name": "ai-usage-tracker",
+  "name": "local-logger",
   "displayName": "AI Usage Tracker - Team Productivity Analytics",
-  "description": "🤖 Automatically track AI tool usage, measure productivity impact, and generate team analytics. Converts manual CSV logging into seamless automated tracking for Copilot, Claude, Devin, and more.",
-  "version": "1.0.0",
+  "description": "🚀 The #1 VS Code extension for automated AI productivity tracking. Transform manual CSV logging into professional team analytics. Tracks GitHub Copilot, Claude, Devin, Cursor & more with real-time insights, automatic CSV export, and team collaboration features.",
+  "version": "1.1.0",
   "preview": false,
   "engines": {
     "vscode": "^1.74.0"
@@ -15,18 +15,34 @@
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {
-    "color": "#1e1e1e",
+    "color": "#0078d4",
     "theme": "dark"
+  },
+  "qna": "marketplace",
+  "homepage": "https://github.com/gaurabh-chakraborty/local-logger-extension/blob/main/README.md",
+  "bugs": {
+    "url": "https://github.com/gaurabh-chakraborty/local-logger-extension/issues",
+    "email": "support@example.com"
   },
   "badges": [
     {
+      "url": "https://img.shields.io/vscode-marketplace/v/GaurabhChakraborty.local-logger?label=VS%20Code%20Marketplace&logo=visual-studio-code",
+      "href": "https://marketplace.visualstudio.com/items?itemName=GaurabhChakraborty.local-logger",
+      "description": "VS Code Marketplace Version"
+    },
+    {
+      "url": "https://img.shields.io/vscode-marketplace/d/GaurabhChakraborty.local-logger?logo=visual-studio-code",
+      "href": "https://marketplace.visualstudio.com/items?itemName=GaurabhChakraborty.local-logger",
+      "description": "Total Downloads"
+    },
+    {
       "url": "https://img.shields.io/badge/AI%20Tools-Supported-brightgreen",
-      "href": "https://github.com/gaurabh-chakraborty/ai-usage-tracker",
+      "href": "https://github.com/gaurabh-chakraborty/local-logger-extension#supported-ai-tools",
       "description": "Supports multiple AI tools"
     },
     {
       "url": "https://img.shields.io/badge/Data%20Export-CSV-blue",
-      "href": "https://github.com/gaurabh-chakraborty/ai-usage-tracker", 
+      "href": "https://github.com/gaurabh-chakraborty/local-logger-extension#csv-export",
       "description": "Exports to CSV format"
     }
   ],
@@ -38,7 +54,7 @@
   ],
   "keywords": [
     "ai tracking",
-    "productivity analytics", 
+    "productivity analytics",
     "github copilot",
     "claude ai",
     "devin agent",
@@ -149,7 +165,7 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "localLogger.endAISession", 
+        "command": "localLogger.endAISession",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus"
@@ -173,14 +189,14 @@
         },
         {
           "command": "localLogger.endAISession",
-          "when": "true" 
+          "when": "true"
         },
         {
           "command": "localLogger.exportToCSV",
           "when": "true"
         },
         {
-          "command": "localLogger.viewAIUsageDashboard", 
+          "command": "localLogger.viewAIUsageDashboard",
           "when": "true"
         },
         {
@@ -321,20 +337,20 @@
     "clean": "rimraf out *.vsix",
     "dev": "npm run clean && npm run compile && npm run package",
     "release:patch": "npm version patch && npm run package",
-    "release:minor": "npm version minor && npm run package", 
+    "release:minor": "npm version minor && npm run package",
     "release:major": "npm version major && npm run package",
     "check": "npm run lint && npm run compile && npm test",
     "prepare-release": "npm run check && npm run package",
     "local-install": "code --install-extension $(ls *.vsix | head -1)"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
     "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
-    "eslint": "^8.28.0",
-    "typescript": "^4.9.4",
     "@vscode/test-electron": "^2.2.0",
-    "rimraf": "^5.0.0"
+    "eslint": "^8.28.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^4.9.4"
   }
 }
