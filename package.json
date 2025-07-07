@@ -6,8 +6,19 @@
   "engines": {
     "vscode": "^1.50.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gaurabh-chakraborty/local-logger-extension"
+  },
+  "publisher": "GaurabhChakraborty",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
-    "*"
+    "onCommand:my-logger.processLogs",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {

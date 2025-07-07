@@ -18,8 +18,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidOpenTextDocument(doc => log(`Opened: ${doc.fileName}`), null, context.subscriptions);
     vscode.workspace.onDidCloseTextDocument(doc => log(`Closed: ${doc.fileName}`), null, context.subscriptions);
     vscode.workspace.onDidSaveTextDocument(doc => log(`Saved: ${doc.fileName}`), null, context.subscriptions);
-    vscode.workspace.onDidChangeTextDocument(e => log(`Changed: ${e.document.fileName}`), null, context.subscriptions);
+    vscode.workspace.onDidChangeTextDocument((event) => {
+        const fileName = event.document.fileName;
 
+        // Prevent recursive logging caused by writing to own output channel
+        if (fileName.includes('extension-output-') && fileName.includes('local-logger')) {
+            return;
+        }
+
+        log(`Changed: ${fileName}`);
+    });
+    
     // Editor events
     vscode.window.onDidChangeActiveTextEditor(editor => {
         if (editor) log(`Switched editor: ${editor.document.fileName}`);
